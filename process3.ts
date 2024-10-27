@@ -3,7 +3,7 @@ import * as path from 'path';
 import * as tar from 'tar';
 import * as zlib from 'zlib';
 import { writeFileSync } from 'node:fs';
-//import duckdb
+
 import { ParquetSchema, ParquetWriter, ParquetReader } from 'parquets';
 
 interface ProcessedData {
@@ -29,7 +29,6 @@ type FunctionStatsWithGit = {
     }
 };
 
-//let functionSums: FunctionStatsWithGit = {};
 
 async function processPerfData(rootDir: string): Promise<ProcessedData[]> {
   console.log("processPerfData",rootDir);
@@ -242,8 +241,8 @@ async function writeFunctionStatsToParquet(
     // Flatten the nested structure and write rows
     const currentTimestamp = Date.now();
     
-    for (const [funcName, gitUrls] of Object.entries(stats)) {
-        for (const [gitUrl, metrics] of Object.entries(gitUrls)) {
+    for (const [gitUrl, funcNames] of Object.entries(stats)) {
+        for (const [funcName, metrics] of Object.entries(funcNames)) {
             const row = {
                 function_name: funcName,
                 git_url: gitUrl,
@@ -266,17 +265,6 @@ async function writeFunctionStatsToParquet(
 
 
 // Helper function to read the stats back (for verification)
-async function readFunctionStats(filePath: string): Promise<void> {
-    const reader = await ParquetReader.openFile(filePath);
-    const cursor = reader.getCursor();
-    let record = null;
-    
-    while (record = await cursor.next()) {
-        console.log(record);
-    }
-    
-    await reader.close();
-}
 
 // Example of reading the file back
   //readFunctionStats('function_stats.parquet')
