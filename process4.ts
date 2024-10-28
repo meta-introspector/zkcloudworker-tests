@@ -17,7 +17,7 @@ type FunctionStatsWithGit = {
     }
 };
 
-async function processPerfData(rootDir: string)  {
+async function processPerfDataOld(rootDir: string)  {
   console.log("processPerfData",rootDir);
 
   const subdirs = fs.readdirSync(rootDir)
@@ -72,6 +72,52 @@ async function processPerfData(rootDir: string)  {
   //  console.log("files",processingPromises);  
 }
 
+
+async function processPerfData2(rootDir: string) {
+  console.log("processPerfData", rootDir);
+
+  const subdirs = fs.readdirSync(rootDir)
+    .map(name => path.join(rootDir, name))
+    .filter(dir => fs.statSync(dir).isDirectory());
+
+  const files: string[] = [];
+  for (const subdir of subdirs) {
+    const perfDataPath = path.join(subdir, 'perf.data.tar.gz.parquet');
+
+    if (!fs.existsSync(perfDataPath)) {
+      console.log(`No 'perf.data.tar.gz.parquet' found in ${subdir}`);
+      continue;
+    } else {
+      files.push(perfDataPath);
+    }
+  }
+
+  const total: FunctionStatsWithGit = {};
+  const processingPromises = files.map(file => processParquet(file, total));
+
+    console.log("processingPromises",processingPromises);
+
+  try {
+    // Wait for all files to be processed
+    const results = await Promise.allSettled(processingPromises);
+      console.log("results",results);	
+    results.forEach((result, index) => {
+          console.log("result",result);	
+      if (result.status === 'fulfilled') {
+        console.log(`Successfully processed file: ${files[index]}`);
+      } else {
+        console.error(`Error processing file: ${files[index]} - ${result.reason}`);
+      }
+    });
+    
+    console.log("Total function stats collected:", total);
+  } catch (error) {
+    console.error('Error processing directory:', error);
+    throw error;
+  }
+  console.log("finished",total);	
+}
+
 // from https://stackoverflow.com/questions/68856528/javascript-regex-to-split-camel-case-string
 function camelCaseSplit(str:string): string[] {
   let ret = str.replace(/[\-\.::\/_]/g,' ').replace(/(?<=[a-z\d])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/g, ' ')
@@ -91,7 +137,7 @@ async function processParquet(parquetPath: string,functionSums:FunctionStatsWith
       const cursor = reader.getCursor();
       let record = null;
       while (record = await cursor.next()) {
-	//console.log(record);
+      	    //console.log(record);
 	let fname = record.function_name;
 	let git_url = record.git_url;
 	
@@ -124,16 +170,16 @@ async function processParquet(parquetPath: string,functionSums:FunctionStatsWith
       
       await reader.close();
     }  catch (error) {
-      //console.error('Error processing performance data:', error);
+      console.error('Error processing performance data:', parquetPath, error);
     }
 
-    //console.log("sums2",functionSums);
+    //    console.log("sums2",functionSums);
   });
 }
 
 async function main() {
   const rootDirectory = './data2/';
-  const results = await processPerfData(rootDirectory);
+  const results = await processPerfData2(rootDirectory);
 }
 // Run the script
 main();

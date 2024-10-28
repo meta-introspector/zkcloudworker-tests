@@ -3,18 +3,12 @@ import * as path from 'path';
 import * as tar from 'tar';
 import * as zlib from 'zlib';
 import { writeFileSync } from 'node:fs';
-
 import { ParquetSchema, ParquetWriter, ParquetReader } from 'parquets';
 
 interface ProcessedData {
   directory: string;
   functionSequences: string[][];
 }
-
-//let functionSums: { [key: string]: { total: number, count: number, min: number, max: number} } = {};
-//let functionSums2: { [key: string]: { total: number, count: number, min: number, max: number} } = {};
-
-// NEW
 // Define the expanded type with git URL
 type Stats = {
             total: number;
@@ -28,7 +22,6 @@ type FunctionStatsWithGit = {
         [gitUrl: string]: Stats
     }
 };
-
 
 async function processPerfData(rootDir: string): Promise<ProcessedData[]> {
   console.log("processPerfData",rootDir);
@@ -48,34 +41,7 @@ async function processPerfData(rootDir: string): Promise<ProcessedData[]> {
       continue;
     }
 
-    const functionSequences = await processTarGz(perfDataPath);
-
-    //    for (let functionName in functionSums) {
-      //console.log("report1",perfDataPath,functionName, functionSums[functionName]);
-
-    //let total = functionSums[functionName];
-      // if (functionSums2[functionName]) {
-      // 	functionSums2[functionName].total += total.total;
-      // 	functionSums2[functionName].count += total.count;
-      // 	functionSums2[functionName].min = Math.min(functionSums2[functionName].min, total.total);
-      // 	functionSums2[functionName].max = Math.max(functionSums2[functionName].max, total.total);
-      // }
-      // else {
-      // 	functionSums2[functionName] = {
-      // 	  count : total.count,
-      // 	  total: total.total,
-      // 	  min: total.min,
-      // 	  max: total.max,
-      // 	}
-      // }
-    //} 
-    
-    //functionSums= {}; // reset
-    
-    results.push({
-      directory: subdir,
-      functionSequences
-    });
+    await processTarGz(perfDataPath);   
 
   }
 
@@ -131,94 +97,6 @@ function process(tarpath:string, profile:any, start:number, depth:number, functi
   return total;
 }
 
-async function processTarGz(tarpath: string): Promise<string[][]> {
-  const functionSequences: string[][] = [];
-  const fileContents = new Map<string, Buffer>();
-  await new Promise((resolve, reject) => {
-    const extract = tar.extract();
-    const fileStream = fs.createReadStream(tarpath).pipe(zlib.createGunzip());
-    extract.on('entry', async (header, stream, next) => {
-      if (header.type === 'File' && header.path.endsWith('cpuprofile')) {
-	const chunks: any[] = [];
-	if (header) {
-	  header.on('data', (chunk:any) =>{
-	    chunks.push(Buffer.from(chunk))
-	  });
-	  header.on('end', () =>{
-	    let jsonContent:string = Buffer.concat(chunks).toString("utf-8");
-	    //console.log(jsonContent);
-	    const profile = JSON.parse(jsonContent);
-	    //console.log(profile);
-	    //console.log(profile.nodes[0]);
-	    let report = {};
-	    let res = process(tarpath,profile,0,0,report);
-	    //console.log(report);
-	    //console.log(tarpath,res);
-	    console.log("check",tarpath + ".parquet");
-	    writeFunctionStatsToParquet(report,tarpath + ".parquet");
-	    
-	    //console.log(header.path,res);
-	  });
-	}
-      }
-    });
-    extract.on('finish', resolve);
-    extract.on('error', reject);
-    fileStream.pipe(extract);
-  });
-
-  // Process files in sorted order
-  const sortedFiles = Array.from(fileContents.keys()).sort();
-
-  for (const fileName of sortedFiles) {
-    const content = fileContents.get(fileName)!;
-
-    try {
-      const jsonContent = content.toString('utf8');
-      const profile = JSON.parse(jsonContent);
-
-
-      //console.log(profile);
-    } catch (error) {
-      console.warn(`Failed to process ${fileName}: ${error}`);
-      continue;
-    }
-  }
-
-  return functionSequences;
-}
-async function extractTarGz(tarpath: string, extractPath: string): Promise<void> {
-  console.log("extractTarGz",tarpath);
-  return new Promise((resolve, reject) => {
-    //fs.mkdirSync(extractPath, { recursive: true });
-    fs.createReadStream(tarpath)
-      .pipe(zlib.createGunzip())
-      .pipe(tar.extract({ cwd: extractPath }))
-      .on('end', resolve)
-      .on('error', reject);
-  });
-}
-
-function isJsonFile(filePath: string): boolean {
-  console.log("isjsonfile",filePath);
-  try {
-    const content = fs.readFileSync(filePath, 'utf8');
-    return JSON.parse(content);
-  } catch {
-    return false;
-  }
-}
-
-async function readJsonFile(filePath: string): Promise<any> {
-  const content = await fs.promises.readFile(filePath, 'utf8');
-  return JSON.parse(content);
-}
-
-
-
-// Run the script
-
-
 async function writeFunctionStatsToParquet(
     stats: FunctionStatsWithGit,
     outputPath: string
@@ -262,39 +140,104 @@ async function writeFunctionStatsToParquet(
     await writer.close();
 }
 
+function writeFunctionStatsToCSV(stats: FunctionStatsWithGit, outputPath: string): void {
+    const rows: string[] = ['function_name,git_url,total_count,row_count,min_count,max_count'];
+    
+    for (const [gitUrl, funcNames] of Object.entries(stats)) {
+        for (const [funcName, metrics] of Object.entries(funcNames)) {
+            rows.push(`"${funcName}","${gitUrl}",${metrics.total},${metrics.count},${metrics.min},${metrics.max}`);
+        }
+    }
+    
+    writeFileSync(outputPath, rows.join('\n'));
+}
 
+function writeFunctionStatsToJSON(stats: FunctionStatsWithGit, outputPath: string): void {
+    const flattenedData = [];
+    
+    for (const [gitUrl, funcNames] of Object.entries(stats)) {
+        for (const [funcName, metrics] of Object.entries(funcNames)) {
+            flattenedData.push({
+                function_name: funcName,
+                git_url: gitUrl,
+                total_count: metrics.total,
+                row_count: metrics.count,
+                min_count: metrics.min,
+                max_count: metrics.max
+            });
+        }
+    }
+    
+    writeFileSync(outputPath, JSON.stringify(flattenedData, null, 2));
+}
 
-// Helper function to read the stats back (for verification)
+async function processTarGz(tarpath: string): Promise<string[][]> {
+  const functionSequences: string[][] = [];
+  const fileContents = new Map<string, Buffer>();
+  await new Promise((resolve, reject) => {
+    const extract = tar.extract();
+    const fileStream = fs.createReadStream(tarpath).pipe(zlib.createGunzip());
+    extract.on('entry', async (header, stream, next) => {
+      if (header.type === 'File' && header.path.endsWith('cpuprofile')) {
+	const chunks: any[] = [];
+	if (header) {
+	  header.on('data', (chunk:any) =>{
+	    chunks.push(Buffer.from(chunk))
+	  });
+	  header.on('end', () =>{
+	    let jsonContent:string = Buffer.concat(chunks).toString("utf-8");
+	    const profile = JSON.parse(jsonContent);
+	    let report = {};
+	    let res = process(tarpath,profile,0,0,report);
+	    console.log("check",tarpath + ".parquet");
+	    writeFunctionStatsToCSV(report,tarpath + ".csv");
+	    writeFunctionStatsToParquet(report,tarpath + ".parquet");
+	    writeFunctionStatsToJSON(report,tarpath + ".json");
+	    
+	    //console.log(header.path,res);
+	  });
+	}
+      }
+    });
+    extract.on('finish', resolve);
+    extract.on('error', reject);
+    fileStream.pipe(extract);
+  });
 
-// Example of reading the file back
-  //readFunctionStats('function_stats.parquet')
-  //    .then(() => console.log('Successfully read parquet file'))
-//    .catch(error => console.error('Error reading parquet file:', error));
+  // Process files in sorted order
+  const sortedFiles = Array.from(fileContents.keys()).sort();
 
-// Example usage
+  for (const fileName of sortedFiles) {
+    const content = fileContents.get(fileName)!;
+
+    try {
+      const jsonContent = content.toString('utf8');
+      const profile = JSON.parse(jsonContent);
+
+      //console.log(profile);
+    } catch (error) {
+      console.warn(`Failed to process ${fileName}: ${error}`);
+      continue;
+    }
+  }
+
+  return functionSequences;
+}
+async function extractTarGz(tarpath: string, extractPath: string): Promise<void> {
+  console.log("extractTarGz",tarpath);
+  return new Promise((resolve, reject) => {
+    //fs.mkdirSync(extractPath, { recursive: true });
+    fs.createReadStream(tarpath)
+      .pipe(zlib.createGunzip())
+      .pipe(tar.extract({ cwd: extractPath }))
+      .on('end', resolve)
+      .on('error', reject);
+  });
+}
+
 async function main() {
     const rootDirectory = './data2/';
     const results = await processPerfData(rootDirectory);
 };
-    // Output results
-  //   for (const result of results) {
-  //     console.log(`\nDirectory: ${result.directory}`);
-  //     console.log('Function Sequences:');
-  //     result.functionSequences.forEach((sequence, index) => {
-  // 	console.log(`\nSequence ${index + 1}:`);
-  // 	console.log(sequence.join(' -> '));
-  //     });
-  //   }
-  // } catch (error) {
-  //   console.error('Error processing performance data:', error);
-  // }
-
-  //  for (let tarPath in functionSums2) {
-  //    for (let functionName in functionSums2) {
-  //    console.log("sum",functionName, functionSums2[tarPath][functionName]);
-  //  }
-  //writeFunctionStatsToParquet(functionSums,"functions.parquet");
-  
-  
 
 main();

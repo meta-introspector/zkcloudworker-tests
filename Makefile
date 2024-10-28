@@ -1,7 +1,11 @@
+test4:
+	ts-node ./select_sum_csv.ts
+
 #(require 'ansi-color)
 #(add-hook 'compilation-filter-hook 'ansi-color-compilation-filter)
-test4:
-	ts-node ./process4.ts
+test5:
+	ts-node ./process_multi.ts
 
-test:
+
+test_convert:
 	ts-node ./process3.ts

@@ -1,3 +1,6 @@
+/*
+simple function to read and report in freestyle the data.
+ */
 import * as fs from 'fs';
 import * as path from 'path';
 import * as tar from 'tar';
