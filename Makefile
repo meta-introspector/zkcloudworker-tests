@@ -1,4 +1,6 @@
-test4:
+report:
+	ts-node ./report.tsx
+test4:x
 	ts-node ./select_sum_csv.ts
 
 #(require 'ansi-color)

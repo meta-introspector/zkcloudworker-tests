@@ -3,12 +3,6 @@ import * as path from 'path';
 import { finished } from "node:stream/promises";
 import { parse, transform, stringify } from "csv";
 
-// type Stats = {
-//   total: number;
-//   count: number;
-//   //            min: number;
-//   //            max: number;
-// };
 
 // type FunctionStatsWithGit = {
 //     [key: string]: {
